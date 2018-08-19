@@ -168,7 +168,7 @@ class OKEXSpotApi(OKEXWebSocket):
 
     def __init__(self):
         """Constructor"""
-        super(WsSpotApi, self).__init__()
+        super(OKEXSpotApi, self).__init__()
 
     def ChannelSpotTicker(self, symbol):
         print(u'OKEX.ChannelSpotTicker:{}'.format(symbol))
@@ -213,7 +213,7 @@ class OKEXFuturesApi(OKEXWebSocket):
         self.use_lever_rate = 10
         self.trace = False
 
-    def subsribeFutureTicker(self, symbol, contract_type):
+    def ChannelFutureTicker(self, symbol, contract_type):
         req = "{'event':'addChannel','channel':'ok_sub_futureusd_%s_ticker_%s'}" % (symbol, contract_type)
         self.ws.send(req)
 
