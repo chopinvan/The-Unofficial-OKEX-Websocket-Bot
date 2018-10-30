@@ -10,6 +10,8 @@ For quant traders, API connection through an exchange is important. This websock
 For this version, the REST API is added. It runs as a seperate thread. Because in OKEX v1, checking current position balance is only available through REST API. Code is modified to suit this project
 https://github.com/Harry-Lucas/okcoin_to_okex_request
 
+https://github.com/bihanggit
+
 
 Websocket API provides fastest data connection, and unlimited refreshing. It is the reason Both websocket and Rest API are integrated together to supplement each other functions. This project has a robust connection and error handling system that either Websocket or Rest get accedental drop in internet connection, the program automantically recovers the lost connection. No need for users to do anything. 
 
