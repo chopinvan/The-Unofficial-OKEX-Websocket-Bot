@@ -30,6 +30,12 @@ class OKEXWebSocket(object):
         self.ws = None          
         self.thread = None      
 
+    def inflate(data):
+        decompress = zlib.decompressobj(-zlib.MAX_WBITS)  # see above
+        inflated = decompress.decompress(data)
+        inflated += decompress.flush()
+        return inflated
+
     def readData(self, evt):
         """
         To decode received Websocket raw data
@@ -44,7 +50,81 @@ class OKEXWebSocket(object):
             print(u'OKEX.close')
             self.ws.close()
             self.thread.join()
+
+    def reconnect_accu(self):
+        # To close the previous session
+        self.close()
+        # To reconnect using the following para
+        self.ws = websocket.WebSocketApp(self.host, 
+                                         on_message=self.onMessage_accu,
+                                         on_error=self.onError,
+                                         on_close=self.onClose,
+                                         on_open=self.onOpen)        
+        self.thread = Thread(target=self.ws.run_forever)
+        self.thread.start()
+        Golbal_control.onError = 0
     
+    def connect_accu(self, apiKey, secretKey, trace=False):    ### It is the accummulative trades to count open interests (Total contracts holding. It pairs with reconnect_accu(self))
+        """
+        :param apiKey   : API key
+        :param secretKey: key
+        :param trace    : If websocket journal activities need to be tracked. Check StreamHandler for it.
+        :return:
+        """
+        # Renew websocket API info
+        self.host = OKEX_FUTURES_HOST
+        self.apiKey = apiKey
+        self.secretKey = secretKey
+        # Websocket journal
+        websocket.enableTrace(trace)
+        self.ws = websocket.WebSocketApp(self.host, 
+                                             on_message=self.onMessage_accu,
+                                             on_error=self.onError,
+                                             on_close=self.onClose,
+                                             on_open=self.onOpen)        
+            
+        self.thread = Thread(target=self.ws.run_forever)
+        self.thread.start()
+    def onMessage_accu(self, ws, evt):    
+        """
+        Websocket Message only for accumulative Buy/Sell trading view
+        """
+        #print(u'OKEX.onMessage:{}'.format(evt))
+        data = defaultdict(OrderedDict)
+        evt_buffer = json.loads(evt)
+        #print ("I am evt_buffer",evt_buffer)
+        #print ("length",len(evt_buffer))
+        #print ("Po,:", evt_buffer['event'])
+        if 1:
+            for i in evt_buffer:
+                if i != 'event':     ##### Filter though Heart Beat Ping Pong
+                #print (i)
+                    #print (i['data'])   ##print ("item 1:", item[1]["data"])  ######## new  item 1: [['1342346450207746', '4.917', '300', '01:36:21', 'ask']]
+                    #print ( "Length", len(i['data']))
+                    for row in i['data']:
+                    #    print (row[5])
+                        if (len(row)>5):                   ########3  In the begining, row is greater than 5. Then, reduced to 4
+                            pass
+                        else:
+                            #if Golbal_passing.trades_switch:   
+                            if 1: 
+                                if (row[4] == 'bid'):   # Seperate Bid and sell. 
+                                    if (Golbal_control.last_orderID != float(row[0])):
+                                        Golbal_control.trades_total += float (row[2])
+                                        Golbal_control.trades_price = float (row[1])
+                                        Golbal_control.last_orderID = float(row[0])#####################3  
+                                        #print (Golbal_control.trades_total)   #Debug port, only buy output trades total
+                                        #print( Golbal_control.trades_price)
+                                    else :
+                                        Golbal_control.trades_total = 0
+                                else :                   # Seperate Bid and sell. 
+                                    if (Golbal_control.last_orderID != float(row[0])):
+                                        Golbal_control.trades_total -= float (row[2])
+                                        Golbal_control.trades_price = float (row[1])
+                                        Golbal_control.last_orderID = float(row[0])
+                                        #print (Golbal_control.trades_total)   #Debug port, only sell output trades total
+                                    else :
+                                        Golbal_control.trades_total = 0 
     def reconnect(self):
         # To close the previous session
         self.close()
@@ -81,8 +161,11 @@ class OKEXWebSocket(object):
         self.thread.start()
 
     def onMessage(self, ws, evt):
-
-        evt = json.loads(evt)
+        """信息推送"""
+        #evt = json.loads(evt)
+        #print (OKEXWebSocket.inflate(evt)) absolutly raw message
+        
+        evt = json.loads(OKEXWebSocket.inflate(evt)) 
         if 0: # debug == 1: 
             #print(u'OKEX.onMessage_Everything:{}'.format(evt))
             print ('evt[0][channel]', evt)
@@ -109,6 +192,10 @@ class OKEXWebSocket(object):
 
                     if evt[0]['channel'] == 'ok_sub_futureusd_%s_depth_quarter_10' % (Golbal_control.product_name_channel):
                         self.data_ok_sub_futureusd_product_depth_quarter_10 = evt[0]['data']
+
+                    if evt[0]['channel'] == 'ok_sub_futureusd_%s_depth_quarter_5' % (Golbal_control.product_name_channel):
+                        self.data_ok_sub_futureusd_product_depth_quarter_5 = evt[0]['data']
+
 
                     if evt[0]['channel'] == 'ok_sub_futureusd_%s_depth_quarter_20' % (Golbal_control.product_name_channel):
                         self.data_ok_sub_futureusd_product_depth_quarter_20 = evt[0]['data']
@@ -263,8 +350,11 @@ class OKEXWebSocket(object):
     def return_product_trade_quarter(self):
         return self.data_ok_sub_futureusd_product_trade_quarter 
 
-    def return_product_depth_quarter_10 (self):
+    def return_product_depth_quarter_10 (self):                 ##### has to be called in sanity check 
         return self.data_ok_sub_futureusd_product_depth_quarter_10
+
+    def return_product_depth_quarter_5 (self):
+        return self.data_ok_sub_futureusd_product_depth_quarter_5
 
     def return_product_depth_quarter_20 (self):
         return self.data_ok_sub_futureusd_product_depth_quarter_20
@@ -357,6 +447,9 @@ class OKEXFuturesApi(OKEXWebSocket):
         ###############api.subscribeFutureDepth10()
         self.data_ok_sub_futureusd_product_depth_quarter_10 = []
 
+        ###############api.subscribeFutureDepth5()
+        self.data_ok_sub_futureusd_product_depth_quarter_5 = []
+
         ###############api.subscribeFutureDepth20()
         self.data_ok_sub_futureusd_product_depth_quarter_20 = []
 
@@ -400,6 +493,9 @@ class OKEXFuturesApi(OKEXWebSocket):
         req = "{'event':'addChannel','channel':'ok_sub_futureusd_%s_depth_%s_10'}" % (symbol, contract_type)
         self.ws.send(req)   
 
+    def ChannelFutureDepth5(self, symbol, contract_type):
+        req = "{'event':'addChannel','channel':'ok_sub_futureusd_%s_depth_%s_5'}" % (symbol, contract_type)
+
     def ChannelFutureTrades(self, symbol, contract_type):
         req = "{'event':'addChannel','channel':'ok_sub_futureusd_%s_trade_%s'}" % (symbol, contract_type)
         self.ws.send(req)
@@ -418,6 +514,7 @@ class OKEXFuturesApi(OKEXWebSocket):
 
         #=========================
     def futureTrade(self, symbol_pair, contract_type, type_, price, amount, _match_price='0', _lever_rate=None):
+        """期货委托"""
         params = {}
         params['symbol'] = str(symbol_pair)
         params['contract_type'] = str(contract_type)
@@ -464,6 +561,9 @@ class OKEXFuturesApi(OKEXWebSocket):
         params['symbol'] = str(symbol_pair)
         params['order_id'] = str(order_id)
         params['contract_type'] = str(contract_type)
+        #params['status'] = str(status)
+        #params['current_page'] = str(current_page)
+        #params['page_length'] = str(page_length)
 
         channel = 'ok_futureusd_orderinfo'
 
